@@ -1,0 +1,8 @@
+{
+  "name": "production-finder-warehouse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Integrated warehouse, logistics, sales and accounting MVP",
+  "scripts": { "start": "node server.js", "dev": "node --watch server.js" },
+  "engines": { "node": ">=18" }
+}

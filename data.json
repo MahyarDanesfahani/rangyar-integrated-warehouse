@@ -1,0 +1,251 @@
+{
+  "products": [
+    {
+      "id": "p1",
+      "sku": "CLR-001",
+      "barcode": "6260001000012",
+      "name": "رنگ اکریلیک سفید",
+      "category": "رنگ ساختمانی",
+      "unit": "سطل",
+      "price": 1850000,
+      "reorderPoint": 30,
+      "safetyStock": 15
+    },
+    {
+      "id": "p2",
+      "sku": "CLR-002",
+      "barcode": "6260001000029",
+      "name": "رنگ روغنی طوسی",
+      "category": "رنگ ساختمانی",
+      "unit": "سطل",
+      "price": 2450000,
+      "reorderPoint": 20,
+      "safetyStock": 10
+    },
+    {
+      "id": "p3",
+      "sku": "CLR-003",
+      "barcode": "6260001000036",
+      "name": "ضدزنگ قرمز",
+      "category": "پوشش صنعتی",
+      "unit": "قوطی",
+      "price": 890000,
+      "reorderPoint": 40,
+      "safetyStock": 20
+    }
+  ],
+  "warehouses": [
+    {
+      "id": "w1",
+      "name": "انبار مرکزی تهران",
+      "city": "تهران",
+      "capacity": 1200
+    },
+    {
+      "id": "w2",
+      "name": "انبار شعبه اصفهان",
+      "city": "اصفهان",
+      "capacity": 600
+    },
+    {
+      "id": "w3",
+      "name": "انبار کارخانه",
+      "city": "قزوین",
+      "capacity": 900
+    }
+  ],
+  "locations": [
+    {
+      "id": "l1",
+      "warehouseId": "w1",
+      "code": "A-01-01-01",
+      "hall": "سالن A",
+      "aisle": "01",
+      "rack": "01",
+      "bin": "01",
+      "capacity": 100,
+      "occupied": 76,
+      "status": "فعال"
+    },
+    {
+      "id": "l2",
+      "warehouseId": "w1",
+      "code": "A-01-01-02",
+      "hall": "سالن A",
+      "aisle": "01",
+      "rack": "01",
+      "bin": "02",
+      "capacity": 100,
+      "occupied": 42,
+      "status": "فعال"
+    },
+    {
+      "id": "l3",
+      "warehouseId": "w2",
+      "code": "B-02-03-01",
+      "hall": "سالن B",
+      "aisle": "02",
+      "rack": "03",
+      "bin": "01",
+      "capacity": 80,
+      "occupied": 18,
+      "status": "فعال"
+    },
+    {
+      "id": "l4",
+      "warehouseId": "w3",
+      "code": "Q-01-01-01",
+      "hall": "قرنطینه",
+      "aisle": "01",
+      "rack": "01",
+      "bin": "01",
+      "capacity": 50,
+      "occupied": 7,
+      "status": "قرنطینه"
+    }
+  ],
+  "inventory": [
+    {
+      "id": "i1",
+      "productId": "p1",
+      "warehouseId": "w1",
+      "locationId": "l1",
+      "quantity": 76,
+      "reserved": 18,
+      "batch": "B-1405-08",
+      "expiry": "2027-08-22"
+    },
+    {
+      "id": "i2",
+      "productId": "p2",
+      "warehouseId": "w1",
+      "locationId": "l2",
+      "quantity": 42,
+      "reserved": 8,
+      "batch": "B-1405-07",
+      "expiry": "2027-07-13"
+    },
+    {
+      "id": "i3",
+      "productId": "p1",
+      "warehouseId": "w2",
+      "locationId": "l3",
+      "quantity": 18,
+      "reserved": 0,
+      "batch": "B-1405-08",
+      "expiry": "2027-08-22"
+    },
+    {
+      "id": "i4",
+      "productId": "p3",
+      "warehouseId": "w3",
+      "locationId": "l4",
+      "quantity": 7,
+      "reserved": 0,
+      "batch": "B-1405-06",
+      "expiry": "2027-06-10"
+    }
+  ],
+  "movements": [
+    {
+      "id": "m1",
+      "number": "WH-1405-0001",
+      "type": "ورود خرید",
+      "productId": "p1",
+      "quantity": 76,
+      "warehouseId": "w1",
+      "user": "علی رضایی",
+      "createdAt": "2026-11-09T08:35:00+03:30",
+      "status": "نهایی"
+    },
+    {
+      "id": "m2",
+      "number": "WH-1405-0002",
+      "type": "خروج فروش",
+      "productId": "p2",
+      "quantity": 12,
+      "warehouseId": "w1",
+      "user": "سارا احمدی",
+      "createdAt": "2026-11-09T08:12:00+03:30",
+      "status": "تأییدشده"
+    },
+    {
+      "id": "m3",
+      "number": "WH-1405-0003",
+      "type": "انتقال بین انبار",
+      "productId": "p1",
+      "quantity": 20,
+      "warehouseId": "w2",
+      "user": "محمد کریمی",
+      "createdAt": "2026-11-08T16:20:00+03:30",
+      "status": "در حال پردازش"
+    }
+  ],
+  "orders": [
+    {
+      "id": "o1",
+      "number": "SO-1405-0148",
+      "customer": "شرکت سازه نوین",
+      "destination": "مشهد",
+      "product": "رنگ اکریلیک سفید",
+      "quantity": 24,
+      "driver": "حسین مرادی",
+      "status": "در حال آماده‌سازی",
+      "eta": "۱ روز و ۶ ساعت"
+    },
+    {
+      "id": "o2",
+      "number": "SO-1405-0147",
+      "customer": "فروشگاه رنگ‌آرا",
+      "destination": "کرج",
+      "product": "رنگ روغنی طوسی",
+      "quantity": 8,
+      "driver": "رضا اکبری",
+      "status": "ارسال‌شده",
+      "eta": "۲ ساعت"
+    },
+    {
+      "id": "o3",
+      "number": "SO-1405-0146",
+      "customer": "پروژه برج آفتاب",
+      "destination": "تهران",
+      "product": "ضدزنگ قرمز",
+      "quantity": 15,
+      "driver": "—",
+      "status": "ثبت‌شده",
+      "eta": "—"
+    }
+  ],
+  "audit": [
+    {
+      "id": "a1",
+      "action": "ثبت رسید خرید",
+      "entity": "WH-1405-0001",
+      "user": "علی رضایی",
+      "time": "امروز، ۰۸:۳۵",
+      "detail": "۷۶ سطل رنگ اکریلیک سفید"
+    },
+    {
+      "id": "a2",
+      "action": "تأیید خروج فروش",
+      "entity": "WH-1405-0002",
+      "user": "سارا احمدی",
+      "time": "امروز، ۰۸:۱۲",
+      "detail": "۱۲ سطل رنگ روغنی طوسی"
+    },
+    {
+      "id": "a3",
+      "action": "ورود کاربر",
+      "entity": "سیستم",
+      "user": "مدیر سیستم",
+      "time": "امروز، ۰۷:۵۸",
+      "detail": "ورود موفق با احراز هویت دومرحله‌ای"
+    }
+  ],
+  "accounting": {
+    "receivable": 485000000,
+    "payable": 172000000,
+    "revenue": 1280000000,
+    "grossProfit": 318000000
+  }
+}
