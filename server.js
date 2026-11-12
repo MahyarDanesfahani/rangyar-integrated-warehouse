@@ -3,6 +3,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const postgres = require('./db');
 
 const PORT = process.env.PORT || 3000;
 const dataFile = path.join(__dirname, 'data.json');
@@ -57,12 +58,12 @@ function id(prefix) { return prefix + crypto.randomBytes(4).toString('hex'); }
 function productName(db,id) { return db.products.find(p=>p.id===id)?.name || 'نامشخص'; }
 
 async function api(req,res) {
-  const db=load(), url=new URL(req.url, `http://${req.headers.host}`), p=url.pathname;
-  if (req.method==='GET' && p==='/api/bootstrap') return json(res,200,db);
-  if (req.method==='POST' && p==='/api/products') { const x=await body(req); const item={id:id('p'),...x,price:Number(x.price||0),reorderPoint:Number(x.reorderPoint||0),safetyStock:Number(x.safetyStock||0)}; db.products.push(item); save(db); return json(res,201,item); }
-  if (req.method==='POST' && p==='/api/movements') { const x=await body(req); const qty=Number(x.quantity); const inv=db.inventory.find(i=>i.productId===x.productId&&i.warehouseId===x.warehouseId&&i.locationId===x.locationId); if(!inv&&x.type!=='ورود خرید') return json(res,400,{error:'برای این مکان موجودی ثبت نشده است'}); if(inv && x.type==='خروج فروش' && inv.quantity-inv.reserved<qty) return json(res,400,{error:'موجودی قابل فروش کافی نیست'}); if(inv) inv.quantity += x.type==='خروج فروش' ? -qty : qty; else db.inventory.push({id:id('i'),productId:x.productId,warehouseId:x.warehouseId,locationId:x.locationId,quantity:qty,reserved:0,batch:x.batch||'بدون بچ',expiry:x.expiry||''}); const m={id:id('m'),number:`WH-1405-${String(db.movements.length+1).padStart(4,'0')}`,...x,quantity:qty,user:'کاربر فعلی',createdAt:new Date().toISOString(),status:'پیش‌نویس'}; db.movements.unshift(m); db.audit.unshift({id:id('a'),action:'ثبت '+x.type,entity:m.number,user:'کاربر فعلی',time:'همین الان',detail:`${qty} واحد ${productName(db,x.productId)}`}); save(db); return json(res,201,m); }
-  if (req.method==='POST' && p==='/api/orders') { const x=await body(req); const item={id:id('o'),number:`SO-1405-${String(db.orders.length+149).padStart(4,'0')}`,...x,status:'ثبت‌شده',eta:'در حال محاسبه'}; db.orders.unshift(item); save(db); return json(res,201,item); }
-  if (req.method==='POST' && p==='/api/scan') { const x=await body(req); const product=db.products.find(p=>p.barcode===x.barcode||p.sku===x.barcode); return product ? json(res,200,{found:true,product}) : json(res,404,{found:false,error:'بارکد در سیستم یافت نشد'}); }
+  const db=postgres.enabled ? null : load(), url=new URL(req.url, `http://${req.headers.host}`), p=url.pathname;
+  if (req.method==='GET' && p==='/api/bootstrap') return json(res,200,postgres.enabled ? await postgres.snapshot() : db);
+  if (req.method==='POST' && p==='/api/products') { const x=await body(req); if (postgres.enabled) return json(res,201,await postgres.createProduct(x)); const item={id:id('p'),...x,price:Number(x.price||0),reorderPoint:Number(x.reorderPoint||0),safetyStock:Number(x.safetyStock||0)}; db.products.push(item); save(db); return json(res,201,item); }
+  if (req.method==='POST' && p==='/api/movements') { const x=await body(req); if (postgres.enabled) return json(res,201,await postgres.createMovement(x)); const qty=Number(x.quantity); const inv=db.inventory.find(i=>i.productId===x.productId&&i.warehouseId===x.warehouseId&&i.locationId===x.locationId); if(!inv&&x.type!=='ورود خرید') return json(res,400,{error:'برای این مکان موجودی ثبت نشده است'}); if(inv && x.type==='خروج فروش' && inv.quantity-inv.reserved<qty) return json(res,400,{error:'موجودی قابل فروش کافی نیست'}); if(inv) inv.quantity += x.type==='خروج فروش' ? -qty : qty; else db.inventory.push({id:id('i'),productId:x.productId,warehouseId:x.warehouseId,locationId:x.locationId,quantity:qty,reserved:0,batch:x.batch||'بدون بچ',expiry:x.expiry||''}); const m={id:id('m'),number:`WH-1405-${String(db.movements.length+1).padStart(4,'0')}`,...x,quantity:qty,user:'کاربر فعلی',createdAt:new Date().toISOString(),status:'پیش‌نویس'}; db.movements.unshift(m); db.audit.unshift({id:id('a'),action:'ثبت '+x.type,entity:m.number,user:'کاربر فعلی',time:'همین الان',detail:`${qty} واحد ${productName(db,x.productId)}`}); save(db); return json(res,201,m); }
+  if (req.method==='POST' && p==='/api/orders') { const x=await body(req); if (postgres.enabled) return json(res,201,await postgres.createOrder(x)); const item={id:id('o'),number:`SO-1405-${String(db.orders.length+149).padStart(4,'0')}`,...x,status:'ثبت‌شده',eta:'در حال محاسبه'}; db.orders.unshift(item); save(db); return json(res,201,item); }
+  if (req.method==='POST' && p==='/api/scan') { const x=await body(req); const product = postgres.enabled ? (await postgres.snapshot()).products.find(item=>item.barcode===x.barcode||item.sku===x.barcode) : db.products.find(item=>item.barcode===x.barcode||item.sku===x.barcode); return product ? json(res,200,{found:true,product}) : json(res,404,{found:false,error:'بارکد در سیستم یافت نشد'}); }
   return json(res,404,{error:'مسیر یافت نشد'});
 }
 
