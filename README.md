@@ -42,6 +42,19 @@ Other good alternatives:
 - JSON file persistence in `data.json`
 - No external runtime dependencies in the current MVP
 
+## Database foundation
+
+The project now includes a PostgreSQL schema and migration/seed scripts for the next implementation stage. The current UI server still uses `data.json` until the database connection credentials are configured and the API repository layer is switched on.
+
+```powershell
+Copy-Item .env.example .env
+# Edit DATABASE_URL with the PostgreSQL username and password configured on your machine.
+npm run db:migrate
+npm run db:seed
+```
+
+The database migration creates tables for products, warehouses, locations, inventory, movement documents, orders, and audit events. The seed command imports the current demo data idempotently.
+
 ## Run locally
 
 ```powershell
@@ -268,6 +281,19 @@ rangyar-integrated-warehouse
 - HTML و CSS با طراحی واکنش‌گرا و راست‌به‌چپ
 - ذخیره‌سازی محلی در فایل `data.json`
 - بدون وابستگی runtime خارجی در MVP فعلی
+
+## زیرساخت دیتابیس
+
+اسکیما و اسکریپت‌های آماده‌سازی PostgreSQL به پروژه اضافه شده‌اند. سرور رابط فعلاً تا زمان تنظیم credential اتصال و تکمیل repository layer از `data.json` استفاده می‌کند.
+
+```powershell
+Copy-Item .env.example .env
+# مقدار DATABASE_URL را با نام کاربری و رمز PostgreSQL سیستم خودتان تنظیم کنید.
+npm run db:migrate
+npm run db:seed
+```
+
+migration جدول‌های محصولات، انبارها، مکان‌ها، موجودی، اسناد گردش، سفارش‌ها و رویدادهای حسابرسی را می‌سازد. seed داده‌های نمونه فعلی را به‌صورت قابل تکرار وارد می‌کند.
 
 ## اجرای محلی
 
