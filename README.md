@@ -94,6 +94,10 @@ npm run dev
 | `POST` | `/api/movements` | Create an inventory movement |
 | `POST` | `/api/orders` | Create a sales order |
 | `POST` | `/api/scan` | Find a product by barcode or SKU |
+| `POST` | `/api/auth/login` | Authenticate a user and return a signed token |
+| `GET` | `/api/auth/me` | Inspect the current authenticated user |
+
+When `REQUIRE_AUTH=true`, send the returned token as `Authorization: Bearer <token>`. The initial development account is `admin` / `ChangeMe123!`; change it before any shared or production deployment.
 
 Example barcode request:
 
@@ -294,6 +298,17 @@ npm run db:seed
 ```
 
 migration جدول‌های محصولات، انبارها، مکان‌ها، موجودی، اسناد گردش، سفارش‌ها و رویدادهای حسابرسی را می‌سازد. seed داده‌های نمونه فعلی را به‌صورت قابل تکرار وارد می‌کند.
+
+## احراز هویت و نقش‌ها
+
+برای فعال‌کردن ورود اجباری:
+
+```env
+REQUIRE_AUTH=true
+AUTH_SECRET=یک-کلید-طولانی-و-تصادفی
+```
+
+نقش‌های پایه شامل مدیر سیستم، مدیر انبار، انباردار، فروش، حسابداری و حسابرس هستند. حساب توسعه اولیه `admin` با رمز `ChangeMe123!` است و باید قبل از استفاده مشترک یا production تغییر کند.
 
 ## اجرای محلی
 

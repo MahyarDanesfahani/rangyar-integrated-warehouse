@@ -58,4 +58,4 @@ async function createOrder(x) {
   return result.rows[0];
 }
 
-module.exports = { enabled, snapshot, createProduct, createMovement, createOrder };
+module.exports = { enabled, query, snapshot, createProduct, createMovement, createOrder };
