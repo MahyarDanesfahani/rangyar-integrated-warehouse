@@ -10,17 +10,27 @@ async function query(text, params) {
 }
 
 async function snapshot() {
-  const [products, warehouses, locations, inventory, movements, orders, audit] = await Promise.all([
+  const [products, warehouses, locations, inventory, movements, orders, audit, customers, drivers, vehicles] = await Promise.all([
     query('SELECT id, sku, barcode, name, category, unit, price::float, reorder_point AS "reorderPoint", safety_stock AS "safetyStock" FROM products ORDER BY name'),
     query('SELECT id, name, city, capacity FROM warehouses ORDER BY name'),
     query('SELECT id, warehouse_id AS "warehouseId", code, hall, aisle, rack, bin, capacity, occupied, status FROM locations ORDER BY code'),
     query('SELECT id, product_id AS "productId", warehouse_id AS "warehouseId", location_id AS "locationId", quantity, reserved, batch, expiry FROM inventory ORDER BY id'),
     query(`SELECT id, number, type, product_id AS "productId", quantity, warehouse_id AS "warehouseId", location_id AS "locationId", batch, user_name AS "user", created_at AS "createdAt", status FROM movements ORDER BY created_at DESC`),
     query('SELECT id, number, customer, destination, product, quantity, driver, status, eta FROM orders ORDER BY created_at DESC'),
-    query(`SELECT id, action, entity, user_name AS "user", to_char(created_at, 'YYYY-MM-DD HH24:MI') AS time, detail FROM audit_events ORDER BY created_at DESC LIMIT 100`)
+    query(`SELECT id, action, entity, user_name AS "user", to_char(created_at, 'YYYY-MM-DD HH24:MI') AS time, detail FROM audit_events ORDER BY created_at DESC LIMIT 100`),
+    query('SELECT id, name, phone, national_id AS "nationalId", city, address, credit_limit::float AS "creditLimit" FROM customers ORDER BY name'),
+    query('SELECT id, name, phone, national_id AS "nationalId", license_number AS "licenseNumber", active FROM drivers ORDER BY name'),
+    query('SELECT id, plate, type, capacity, driver_id AS "driverId", active FROM vehicles ORDER BY plate')
   ]);
   const accounting = { receivable: 485000000, payable: 172000000, revenue: 1280000000, grossProfit: 318000000 };
-  return { products: products.rows, warehouses: warehouses.rows, locations: locations.rows, inventory: inventory.rows, movements: movements.rows, orders: orders.rows, audit: audit.rows, accounting };
+  return { products: products.rows, warehouses: warehouses.rows, locations: locations.rows, inventory: inventory.rows, movements: movements.rows, orders: orders.rows, audit: audit.rows, customers: customers.rows, drivers: drivers.rows, vehicles: vehicles.rows, accounting };
+}
+
+async function createMaster(type, x) {
+  const id = `${type[0]}${Date.now().toString(36)}`;
+  if (type === 'customer') return (await query('INSERT INTO customers(id,name,phone,national_id,city,address,credit_limit) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,name,phone,national_id AS "nationalId",city,address,credit_limit::float AS "creditLimit"',[id,x.name,x.phone||'',x.nationalId||'',x.city||'',x.address||'',Number(x.creditLimit||0)])).rows[0];
+  if (type === 'driver') return (await query('INSERT INTO drivers(id,name,phone,national_id,license_number) VALUES($1,$2,$3,$4,$5) RETURNING id,name,phone,national_id AS "nationalId",license_number AS "licenseNumber",active',[id,x.name,x.phone||'',x.nationalId||'',x.licenseNumber||''])).rows[0];
+  return (await query('INSERT INTO vehicles(id,plate,type,capacity,driver_id) VALUES($1,$2,$3,$4,$5) RETURNING id,plate,type,capacity,driver_id AS "driverId",active',[id,x.plate,x.type||'کامیون',Number(x.capacity||0),x.driverId||null])).rows[0];
 }
 
 async function createProduct(x) {
@@ -58,4 +68,4 @@ async function createOrder(x) {
   return result.rows[0];
 }
 
-module.exports = { enabled, query, snapshot, createProduct, createMovement, createOrder };
+module.exports = { enabled, query, snapshot, createProduct, createMovement, createOrder, createMaster };

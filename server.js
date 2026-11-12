@@ -62,6 +62,7 @@ async function api(req,res) {
   const db=postgres.enabled ? null : load(), url=new URL(req.url, `http://${req.headers.host}`), p=url.pathname;
   if (req.method==='POST' && p==='/api/auth/login') { const x=await body(req); if(!postgres.enabled) return json(res,503,{error:'احراز هویت نیازمند PostgreSQL است'}); const user=await auth.login(x.username,x.password); return user ? json(res,200,user) : json(res,401,{error:'نام کاربری یا رمز عبور نادرست است'}); }
   if (req.method==='GET' && p==='/api/auth/me') return json(res,200,{authenticated:Boolean(auth.current(req)), user:auth.current(req)});
+  if (postgres.enabled && req.method==='POST' && ['/api/customers','/api/drivers','/api/vehicles'].includes(p)) { const x=await body(req); const type=p.split('/').pop().slice(0,-1); return json(res,201,await postgres.createMaster(type,x)); }
   const user=auth.current(req);
   if (auth.authRequired() && !user) return json(res,401,{error:'ورود به سامانه الزامی است'});
   if (auth.authRequired() && req.method==='POST' && p==='/api/products' && !auth.assertRole(user,['admin','warehouse_manager'])) return json(res,403,{error:'دسترسی ثبت محصول ندارید'});
