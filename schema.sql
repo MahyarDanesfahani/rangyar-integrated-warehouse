@@ -15,6 +15,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS loaded_at TIMESTAMPTZ;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, action TEXT NOT NULL, entity TEXT NOT NULL, user_name TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, number TEXT NOT NULL UNIQUE, order_id TEXT REFERENCES orders(id), customer TEXT NOT NULL, subtotal NUMERIC(18,2) NOT NULL DEFAULT 0, discount NUMERIC(18,2) NOT NULL DEFAULT 0, tax NUMERIC(18,2) NOT NULL DEFAULT 0, total NUMERIC(18,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'پیش‌نویس', issued_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','warehouse_manager','warehouse_operator','sales','accounting','auditor')), active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS user_warehouses (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, warehouse_id TEXT NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE, PRIMARY KEY(user_id, warehouse_id));
 CREATE INDEX IF NOT EXISTS inventory_product_warehouse_idx ON inventory(product_id, warehouse_id);

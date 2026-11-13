@@ -73,5 +73,7 @@ async function updateOrderStatus(id, status) {
   const result = await query(`UPDATE orders SET status=$1${field ? `, ${field}=now()` : ''} WHERE id=$2 RETURNING id, number, status, loaded_at AS "loadedAt", dispatched_at AS "dispatchedAt", delivered_at AS "deliveredAt"`, [status, id]);
   return result.rows[0];
 }
+async function createInvoice(orderId, x={}) { const order=(await query('SELECT * FROM orders WHERE id=$1',[orderId])).rows[0]; if(!order) throw new Error('سفارش یافت نشد'); const subtotal=Number(x.subtotal||0), discount=Number(x.discount||0), tax=Math.round((subtotal-discount)*Number(x.taxRate||0.1)), total=subtotal-discount+tax; const id=`inv${Date.now().toString(36)}`, number=`INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`; return (await query('INSERT INTO invoices(id,number,order_id,customer,subtotal,discount,tax,total,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt"',[id,number,orderId,order.customer,subtotal,discount,tax,total,'نهایی'])).rows[0]; }
+async function invoice(orderId) { return (await query('SELECT id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt" FROM invoices WHERE order_id=$1 ORDER BY issued_at DESC LIMIT 1',[orderId])).rows[0]; }
 
-module.exports = { enabled, query, snapshot, createProduct, createMovement, createOrder, updateOrderStatus, createMaster };
+module.exports = { enabled, query, snapshot, createProduct, createMovement, createOrder, updateOrderStatus, createInvoice, invoice, createMaster };

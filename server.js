@@ -64,6 +64,8 @@ async function api(req,res) {
   if (req.method==='GET' && p==='/api/auth/me') return json(res,200,{authenticated:Boolean(auth.current(req)), user:auth.current(req)});
   if (postgres.enabled && req.method==='POST' && ['/api/customers','/api/drivers','/api/vehicles'].includes(p)) { const x=await body(req); const type=p.split('/').pop().slice(0,-1); return json(res,201,await postgres.createMaster(type,x)); }
   if (postgres.enabled && req.method==='PATCH' && p.startsWith('/api/orders/') && p.endsWith('/status')) { const x=await body(req); const orderId=p.split('/')[3]; if(!['ثبت‌شده','تأییدشده','در حال آماده‌سازی','بارگیری‌شده','ارسال‌شده','تحویل‌شده','برگشتی'].includes(x.status)) return json(res,400,{error:'وضعیت سفارش معتبر نیست'}); return json(res,200,await postgres.updateOrderStatus(orderId,x.status)); }
+  if (postgres.enabled && req.method==='POST' && p.startsWith('/api/orders/') && p.endsWith('/invoice')) { const x=await body(req); return json(res,201,await postgres.createInvoice(p.split('/')[3],x)); }
+  if (postgres.enabled && req.method==='GET' && p.startsWith('/api/orders/') && p.endsWith('/invoice')) { const inv=await postgres.invoice(p.split('/')[3]); return inv?json(res,200,inv):json(res,404,{error:'فاکتور یافت نشد'}); }
   const user=auth.current(req);
   if (auth.authRequired() && !user) return json(res,401,{error:'ورود به سامانه الزامی است'});
   if (auth.authRequired() && req.method==='POST' && p==='/api/products' && !auth.assertRole(user,['admin','warehouse_manager'])) return json(res,403,{error:'دسترسی ثبت محصول ندارید'});
