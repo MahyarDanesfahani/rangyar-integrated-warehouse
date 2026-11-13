@@ -63,6 +63,7 @@ function productName(db,id) { return db.products.find(p=>p.id===id)?.name || 'ن
 
 async function api(req,res) {
   const db=postgres.enabled ? null : load(), url=new URL(req.url, `http://${req.headers.host}`), p=url.pathname;
+  if (req.method==='GET' && p==='/api/health') { let database='json-fallback'; if(postgres.enabled){try{await postgres.query('SELECT 1'); database='postgresql'}catch{database='database-error'}} return json(res,database==='database-error'?503:200,{status:database==='database-error'?'degraded':'ok',database,time:new Date().toISOString()}); }
   if (req.method==='POST' && p==='/api/auth/login') { const x=await body(req); if(!postgres.enabled) return json(res,503,{error:'احراز هویت نیازمند PostgreSQL است'}); const user=await auth.login(x.username,x.password); return user ? json(res,200,user) : json(res,401,{error:'نام کاربری یا رمز عبور نادرست است'}); }
   if (req.method==='GET' && p==='/api/auth/me') return json(res,200,{authenticated:Boolean(auth.current(req)), user:auth.current(req)});
   if (postgres.enabled && req.method==='GET' && p.startsWith('/print/orders/') && p.endsWith('.pdf')) { const orderId=p.split('/')[3].replace(/\.pdf$/,''); const snap=await postgres.snapshot(); const order=snap.orders.find(x=>x.id===orderId); const inv=await postgres.invoice(orderId); if(!order||!inv) return json(res,404,{error:'سند یافت نشد'}); return pdfInvoice(res,order,inv); }

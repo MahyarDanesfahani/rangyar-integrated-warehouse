@@ -71,6 +71,25 @@ For development with automatic server restart:
 npm run dev
 ```
 
+API smoke tests:
+
+```powershell
+$env:TEST_PORT=3000
+npm run test:api
+```
+
+Health check:
+
+```text
+GET /api/health
+```
+
+Containerized local stack:
+
+```powershell
+docker compose up --build
+```
+
 ## Project structure
 
 ```text
@@ -324,6 +343,25 @@ npm start
 
 ```powershell
 npm run dev
+```
+
+تست سریع API:
+
+```powershell
+$env:TEST_PORT=3000
+npm run test:api
+```
+
+بررسی سلامت سرویس از مسیر زیر انجام می‌شود:
+
+```text
+GET /api/health
+```
+
+اجرای محیط Docker:
+
+```powershell
+docker compose up --build
 ```
 
 ## ساختار پروژه
