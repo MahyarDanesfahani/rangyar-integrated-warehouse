@@ -78,6 +78,15 @@ async function api(req,res) {
   if (auth.authRequired() && req.method==='POST' && p==='/api/products' && !auth.assertRole(user,['admin','warehouse_manager'])) return json(res,403,{error:'دسترسی ثبت محصول ندارید'});
   if (auth.authRequired() && req.method==='POST' && p==='/api/movements' && !auth.assertRole(user,['admin','warehouse_manager','warehouse_operator'])) return json(res,403,{error:'دسترسی ثبت سند انبار ندارید'});
   if (auth.authRequired() && req.method==='POST' && p==='/api/orders' && !auth.assertRole(user,['admin','sales'])) return json(res,403,{error:'دسترسی ثبت سفارش ندارید'});
+  if (postgres.enabled && req.method==='POST' && p==='/api/accounting/journal-entries') {
+    if (!auth.assertRole(user,['admin','accounting'])) return json(res,403,{error:'دسترسی ثبت سند حسابداری ندارید'});
+    const x=await body(req); try { return json(res,201,await postgres.createJournalEntry(x,user)); } catch (error) { return json(res,400,{error:error.message}); }
+  }
+  if (postgres.enabled && req.method==='GET' && p==='/api/accounting/ledger') {
+    if (!auth.assertRole(user,['admin','accounting','auditor'])) return json(res,403,{error:'دسترسی مشاهده دفتر کل ندارید'});
+    const accountId=url.searchParams.get('accountId'); if(!accountId) return json(res,400,{error:'accountId الزامی است'});
+    return json(res,200,await postgres.ledger(accountId,url.searchParams.get('fiscalPeriodId')));
+  }
   if (req.method==='GET' && p==='/api/bootstrap') {
     if (postgres.enabled && user && user.role !== 'admin') {
       const allowed = (await postgres.query('SELECT warehouse_id FROM user_warehouses WHERE user_id=$1',[user.sub])).rows.map(x=>x.warehouse_id);

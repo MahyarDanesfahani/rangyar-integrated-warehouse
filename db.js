@@ -32,6 +32,29 @@ async function canAccessWarehouse(user, warehouseId) {
   return result.rowCount > 0;
 }
 
+async function createJournalEntry(x, user) {
+  const lines = Array.isArray(x.lines) ? x.lines : [];
+  if (lines.length < 2) throw new Error('سند باید حداقل دو ردیف داشته باشد');
+  const debit = lines.reduce((sum, line) => sum + Number(line.debit || 0), 0);
+  const credit = lines.reduce((sum, line) => sum + Number(line.credit || 0), 0);
+  if (!Number.isFinite(debit) || Math.abs(debit - credit) > 0.005) throw new Error('جمع بدهکار و بستانکار باید برابر باشد');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const id = `je${Date.now().toString(36)}`;
+    const number = `JE-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+    await client.query('INSERT INTO journal_entries(id,number,fiscal_period_id,description,source_type,source_id,status,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [id, number, x.fiscalPeriodId, x.description || '', x.sourceType || 'دستی', x.sourceId || null, 'قطعی', user?.username || 'system']);
+    for (const line of lines) await client.query('INSERT INTO journal_lines(id,journal_entry_id,account_id,description,debit,credit) VALUES($1,$2,$3,$4,$5,$6)', [`jl${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`, id, line.accountId, line.description || '', Number(line.debit || 0), Number(line.credit || 0)]);
+    await client.query('UPDATE journal_entries SET posted_at=now() WHERE id=$1', [id]);
+    await client.query('COMMIT');
+    return (await client.query('SELECT id,number,fiscal_period_id AS "fiscalPeriodId",description,source_type AS "sourceType",status,created_by AS "createdBy",posted_at AS "postedAt" FROM journal_entries WHERE id=$1', [id])).rows[0];
+  } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+}
+
+async function ledger(accountId, periodId) {
+  return (await query(`SELECT je.number, je.created_at AS "createdAt", je.description, jl.description AS "lineDescription", jl.debit::float AS debit, jl.credit::float AS credit, ca.code, ca.name AS "accountName" FROM journal_lines jl JOIN journal_entries je ON je.id=jl.journal_entry_id JOIN chart_of_accounts ca ON ca.id=jl.account_id WHERE je.status='قطعی' AND jl.account_id=$1 AND ($2::text IS NULL OR je.fiscal_period_id=$2) ORDER BY je.created_at, je.number`, [accountId, periodId || null])).rows;
+}
+
 async function createMaster(type, x) {
   const id = `${type[0]}${Date.now().toString(36)}`;
   if (type === 'customer') return (await query('INSERT INTO customers(id,name,phone,national_id,city,address,credit_limit) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,name,phone,national_id AS "nationalId",city,address,credit_limit::float AS "creditLimit"',[id,x.name,x.phone||'',x.nationalId||'',x.city||'',x.address||'',Number(x.creditLimit||0)])).rows[0];
@@ -82,4 +105,4 @@ async function updateOrderStatus(id, status) {
 async function createInvoice(orderId, x={}) { const order=(await query('SELECT * FROM orders WHERE id=$1',[orderId])).rows[0]; if(!order) throw new Error('سفارش یافت نشد'); const subtotal=Number(x.subtotal||0), discount=Number(x.discount||0), tax=Math.round((subtotal-discount)*Number(x.taxRate||0.1)), total=subtotal-discount+tax; const id=`inv${Date.now().toString(36)}`, number=`INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`; return (await query('INSERT INTO invoices(id,number,order_id,customer,subtotal,discount,tax,total,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt"',[id,number,orderId,order.customer,subtotal,discount,tax,total,'نهایی'])).rows[0]; }
 async function invoice(orderId) { return (await query('SELECT id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt" FROM invoices WHERE order_id=$1 ORDER BY issued_at DESC LIMIT 1',[orderId])).rows[0]; }
 
-module.exports = { enabled, query, snapshot, canAccessWarehouse, createProduct, createMovement, createOrder, updateOrderStatus, createInvoice, invoice, createMaster };
+module.exports = { enabled, query, snapshot, canAccessWarehouse, createJournalEntry, ledger, createProduct, createMovement, createOrder, updateOrderStatus, createInvoice, invoice, createMaster };
