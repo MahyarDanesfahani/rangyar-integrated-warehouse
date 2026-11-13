@@ -26,6 +26,12 @@ async function snapshot() {
   return { products: products.rows, warehouses: warehouses.rows, locations: locations.rows, inventory: inventory.rows, movements: movements.rows, orders: orders.rows, audit: audit.rows, customers: customers.rows, drivers: drivers.rows, vehicles: vehicles.rows, accounting };
 }
 
+async function canAccessWarehouse(user, warehouseId) {
+  if (!user || user.role === 'admin') return true;
+  const result = await query('SELECT 1 FROM user_warehouses WHERE user_id=$1 AND warehouse_id=$2 LIMIT 1', [user.sub, warehouseId]);
+  return result.rowCount > 0;
+}
+
 async function createMaster(type, x) {
   const id = `${type[0]}${Date.now().toString(36)}`;
   if (type === 'customer') return (await query('INSERT INTO customers(id,name,phone,national_id,city,address,credit_limit) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,name,phone,national_id AS "nationalId",city,address,credit_limit::float AS "creditLimit"',[id,x.name,x.phone||'',x.nationalId||'',x.city||'',x.address||'',Number(x.creditLimit||0)])).rows[0];
@@ -76,4 +82,4 @@ async function updateOrderStatus(id, status) {
 async function createInvoice(orderId, x={}) { const order=(await query('SELECT * FROM orders WHERE id=$1',[orderId])).rows[0]; if(!order) throw new Error('سفارش یافت نشد'); const subtotal=Number(x.subtotal||0), discount=Number(x.discount||0), tax=Math.round((subtotal-discount)*Number(x.taxRate||0.1)), total=subtotal-discount+tax; const id=`inv${Date.now().toString(36)}`, number=`INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`; return (await query('INSERT INTO invoices(id,number,order_id,customer,subtotal,discount,tax,total,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt"',[id,number,orderId,order.customer,subtotal,discount,tax,total,'نهایی'])).rows[0]; }
 async function invoice(orderId) { return (await query('SELECT id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt" FROM invoices WHERE order_id=$1 ORDER BY issued_at DESC LIMIT 1',[orderId])).rows[0]; }
 
-module.exports = { enabled, query, snapshot, createProduct, createMovement, createOrder, updateOrderStatus, createInvoice, invoice, createMaster };
+module.exports = { enabled, query, snapshot, canAccessWarehouse, createProduct, createMovement, createOrder, updateOrderStatus, createInvoice, invoice, createMaster };
