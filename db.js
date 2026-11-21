@@ -9,6 +9,17 @@ async function query(text, params) {
   return pool.query(text, params);
 }
 
+function required(value, label) {
+  if (value === undefined || value === null || String(value).trim() === '') throw new Error(`${label} الزامی است`);
+  return String(value).trim();
+}
+
+function positiveInt(value, label) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`${label} باید عدد صحیح مثبت باشد`);
+  return n;
+}
+
 async function snapshot() {
   const [products, warehouses, locations, inventory, movements, orders, audit, customers, drivers, vehicles] = await Promise.all([
     query('SELECT id, sku, barcode, name, category, unit, price::float, reorder_point AS "reorderPoint", safety_stock AS "safetyStock" FROM products ORDER BY name'),
@@ -56,23 +67,29 @@ async function ledger(accountId, periodId) {
 }
 
 async function createMaster(type, x) {
+  if (!['customer', 'driver', 'vehicle'].includes(type)) throw new Error('نوع اطلاعات پایه معتبر نیست');
   const id = `${type[0]}${Date.now().toString(36)}`;
-  if (type === 'customer') return (await query('INSERT INTO customers(id,name,phone,national_id,city,address,credit_limit) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,name,phone,national_id AS "nationalId",city,address,credit_limit::float AS "creditLimit"',[id,x.name,x.phone||'',x.nationalId||'',x.city||'',x.address||'',Number(x.creditLimit||0)])).rows[0];
-  if (type === 'driver') return (await query('INSERT INTO drivers(id,name,phone,national_id,license_number) VALUES($1,$2,$3,$4,$5) RETURNING id,name,phone,national_id AS "nationalId",license_number AS "licenseNumber",active',[id,x.name,x.phone||'',x.nationalId||'',x.licenseNumber||''])).rows[0];
-  return (await query('INSERT INTO vehicles(id,plate,type,capacity,driver_id) VALUES($1,$2,$3,$4,$5) RETURNING id,plate,type,capacity,driver_id AS "driverId",active',[id,x.plate,x.type||'کامیون',Number(x.capacity||0),x.driverId||null])).rows[0];
+  if (type === 'customer') return (await query('INSERT INTO customers(id,name,phone,national_id,city,address,credit_limit) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,name,phone,national_id AS "nationalId",city,address,credit_limit::float AS "creditLimit"',[id,required(x.name,'نام مشتری'),x.phone||'',x.nationalId||'',x.city||'',x.address||'',Number(x.creditLimit||0)])).rows[0];
+  if (type === 'driver') return (await query('INSERT INTO drivers(id,name,phone,national_id,license_number) VALUES($1,$2,$3,$4,$5) RETURNING id,name,phone,national_id AS "nationalId",license_number AS "licenseNumber",active',[id,required(x.name,'نام راننده'),x.phone||'',x.nationalId||'',x.licenseNumber||''])).rows[0];
+  return (await query('INSERT INTO vehicles(id,plate,type,capacity,driver_id) VALUES($1,$2,$3,$4,$5) RETURNING id,plate,type,capacity,driver_id AS "driverId",active',[id,required(x.plate,'پلاک خودرو'),x.type||'کامیون',Math.max(0,Number(x.capacity||0)),x.driverId||null])).rows[0];
 }
 
 async function createProduct(x) {
+  const name=required(x.name,'نام محصول'), sku=required(x.sku,'کد کالا'), barcode=required(x.barcode,'بارکد');
+  const price=Number(x.price||0), reorderPoint=Number(x.reorderPoint||0), safetyStock=Number(x.safetyStock||0);
+  if (![price,reorderPoint,safetyStock].every(Number.isFinite) || price < 0 || reorderPoint < 0 || safetyStock < 0) throw new Error('مقادیر عددی محصول معتبر نیستند');
   const id = `p${Date.now().toString(36)}`;
-  const result = await query(`INSERT INTO products(id, sku, barcode, name, category, unit, price, reorder_point, safety_stock) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, sku, barcode, name, category, unit, price::float, reorder_point AS "reorderPoint", safety_stock AS "safetyStock"`, [id, x.sku, x.barcode, x.name, x.category || '', x.unit || 'عدد', Number(x.price || 0), Number(x.reorderPoint || 0), Number(x.safetyStock || 0)]);
+  const result = await query(`INSERT INTO products(id, sku, barcode, name, category, unit, price, reorder_point, safety_stock) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, sku, barcode, name, category, unit, price::float, reorder_point AS "reorderPoint", safety_stock AS "safetyStock"`, [id, sku, barcode, name, x.category || '', x.unit || 'عدد', price, reorderPoint, safetyStock]);
   return result.rows[0];
 }
 
-async function createMovement(x) {
+async function createMovement(x, user) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const qty = Number(x.quantity);
+    const qty = positiveInt(x.quantity, 'تعداد');
+    if (!['ورود خرید','خروج فروش','انتقال بین انبار'].includes(x.type)) throw new Error('نوع گردش انبار معتبر نیست');
+    required(x.productId,'محصول'); required(x.warehouseId,'انبار'); required(x.locationId,'مکان');
     const inventory = await client.query('SELECT * FROM inventory WHERE product_id=$1 AND warehouse_id=$2 AND location_id=$3 AND batch=$4 FOR UPDATE', [x.productId, x.warehouseId, x.locationId, x.batch || '']);
     const current = inventory.rows[0];
     if (x.type === 'خروج فروش' && (!current || current.quantity - current.reserved < qty)) throw new Error('موجودی قابل فروش کافی نیست');
@@ -83,26 +100,29 @@ async function createMovement(x) {
       await client.query('INSERT INTO inventory(id, product_id, warehouse_id, location_id, quantity, reserved, batch, expiry) VALUES($1,$2,$3,$4,$5,0,$6,$7)', [`i${Date.now().toString(36)}`, x.productId, x.warehouseId, x.locationId, qty, x.batch || '', x.expiry || null]);
     } else throw new Error('برای این مکان موجودی ثبت نشده است');
     const number = `WH-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
-    const movement = await client.query(`INSERT INTO movements(id, number, type, product_id, quantity, warehouse_id, location_id, batch, user_name, status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, number, type, product_id AS "productId", quantity, warehouse_id AS "warehouseId", location_id AS "locationId", batch, user_name AS "user", created_at AS "createdAt", status`, [`m${Date.now().toString(36)}`, number, x.type, x.productId, qty, x.warehouseId, x.locationId, x.batch || '', 'کاربر فعلی', 'پیش‌نویس']);
-    await client.query('INSERT INTO audit_events(id, action, entity, user_name, detail) VALUES($1,$2,$3,$4,$5)', [`a${Date.now().toString(36)}`, `ثبت ${x.type}`, number, 'کاربر فعلی', `${qty} واحد`]);
+    const actor = user?.username || 'system';
+    const movement = await client.query(`INSERT INTO movements(id, number, type, product_id, quantity, warehouse_id, location_id, batch, user_name, status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, number, type, product_id AS "productId", quantity, warehouse_id AS "warehouseId", location_id AS "locationId", batch, user_name AS "user", created_at AS "createdAt", status`, [`m${Date.now().toString(36)}`, number, x.type, x.productId, qty, x.warehouseId, x.locationId, x.batch || '', actor, 'پیش‌نویس']);
+    await client.query('INSERT INTO audit_events(id, action, entity, user_name, detail) VALUES($1,$2,$3,$4,$5)', [`a${Date.now().toString(36)}`, `ثبت ${x.type}`, number, actor, `${qty} واحد`]);
     await client.query('COMMIT');
     return movement.rows[0];
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
 }
 
 async function createOrder(x) {
+  const customer=required(x.customer,'مشتری'), destination=required(x.destination,'مقصد'), product=required(x.product,'محصول'), quantity=positiveInt(x.quantity,'تعداد');
   const id = `o${Date.now().toString(36)}`;
   const number = `SO-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
-  const result = await query('INSERT INTO orders(id, number, customer, customer_id, destination, product, quantity, driver, driver_id, vehicle_id, source_warehouse_id, status, eta) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, number, customer, customer_id AS "customerId", destination, product, quantity, driver, driver_id AS "driverId", vehicle_id AS "vehicleId", status, eta', [id, number, x.customer, x.customerId || null, x.destination || '', x.product || '', Number(x.quantity || 0), x.driver || '—', x.driverId || null, x.vehicleId || null, x.sourceWarehouseId || null, 'ثبت‌شده', 'در حال محاسبه']);
+  const result = await query('INSERT INTO orders(id, number, customer, customer_id, destination, product, quantity, driver, driver_id, vehicle_id, source_warehouse_id, status, eta) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, number, customer, customer_id AS "customerId", destination, product, quantity, driver, driver_id AS "driverId", vehicle_id AS "vehicleId", status, eta', [id, number, customer, x.customerId || null, destination, product, quantity, x.driver || '—', x.driverId || null, x.vehicleId || null, x.sourceWarehouseId || null, 'ثبت‌شده', 'در حال محاسبه']);
   return result.rows[0];
 }
 
 async function updateOrderStatus(id, status) {
   const field = { 'بارگیری‌شده':'loaded_at', 'ارسال‌شده':'dispatched_at', 'تحویل‌شده':'delivered_at' }[status];
   const result = await query(`UPDATE orders SET status=$1${field ? `, ${field}=now()` : ''} WHERE id=$2 RETURNING id, number, status, loaded_at AS "loadedAt", dispatched_at AS "dispatchedAt", delivered_at AS "deliveredAt"`, [status, id]);
+  if (!result.rows[0]) throw new Error('سفارش یافت نشد');
   return result.rows[0];
 }
-async function createInvoice(orderId, x={}) { const order=(await query('SELECT * FROM orders WHERE id=$1',[orderId])).rows[0]; if(!order) throw new Error('سفارش یافت نشد'); const subtotal=Number(x.subtotal||0), discount=Number(x.discount||0), tax=Math.round((subtotal-discount)*Number(x.taxRate||0.1)), total=subtotal-discount+tax; const id=`inv${Date.now().toString(36)}`, number=`INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`; return (await query('INSERT INTO invoices(id,number,order_id,customer,subtotal,discount,tax,total,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt"',[id,number,orderId,order.customer,subtotal,discount,tax,total,'نهایی'])).rows[0]; }
+async function createInvoice(orderId, x={}) { const order=(await query('SELECT * FROM orders WHERE id=$1',[orderId])).rows[0]; if(!order) throw new Error('سفارش یافت نشد'); const subtotal=Number(x.subtotal||0), discount=Number(x.discount||0), taxRate=Number(x.taxRate||0.1); if(![subtotal,discount,taxRate].every(Number.isFinite)||subtotal<0||discount<0||discount>subtotal||taxRate<0) throw new Error('مقادیر فاکتور معتبر نیستند'); const tax=Math.round((subtotal-discount)*taxRate), total=subtotal-discount+tax; const id=`inv${Date.now().toString(36)}`, number=`INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`; return (await query('INSERT INTO invoices(id,number,order_id,customer,subtotal,discount,tax,total,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt"',[id,number,orderId,order.customer,subtotal,discount,tax,total,'نهایی'])).rows[0]; }
 async function invoice(orderId) { return (await query('SELECT id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt" FROM invoices WHERE order_id=$1 ORDER BY issued_at DESC LIMIT 1',[orderId])).rows[0]; }
 
 module.exports = { enabled, query, snapshot, canAccessWarehouse, createJournalEntry, ledger, createProduct, createMovement, createOrder, updateOrderStatus, createInvoice, invoice, createMaster };
