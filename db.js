@@ -117,6 +117,10 @@ async function createOrder(x) {
 }
 
 async function updateOrderStatus(id, status) {
+  const current=(await query('SELECT status FROM orders WHERE id=$1',[id])).rows[0];
+  if(!current) throw new Error('سفارش یافت نشد');
+  const transitions={ 'ثبت‌شده':['تأییدشده'], 'تأییدشده':['در حال آماده‌سازی','برگشتی'], 'در حال آماده‌سازی':['بارگیری‌شده','برگشتی'], 'بارگیری‌شده':['ارسال‌شده','برگشتی'], 'ارسال‌شده':['تحویل‌شده','برگشتی'], 'تحویل‌شده':['برگشتی'], 'برگشتی':[] };
+  if(!transitions[current.status]?.includes(status)) throw new Error(`انتقال سفارش از «${current.status}» به «${status}» مجاز نیست`);
   const field = { 'بارگیری‌شده':'loaded_at', 'ارسال‌شده':'dispatched_at', 'تحویل‌شده':'delivered_at' }[status];
   const result = await query(`UPDATE orders SET status=$1${field ? `, ${field}=now()` : ''} WHERE id=$2 RETURNING id, number, status, loaded_at AS "loadedAt", dispatched_at AS "dispatchedAt", delivered_at AS "deliveredAt"`, [status, id]);
   if (!result.rows[0]) throw new Error('سفارش یافت نشد');
@@ -135,7 +139,7 @@ async function reserveOrder(orderId, user) {
     if(!warehouseId) throw new Error('انبار مبدأ سفارش مشخص نشده است');
     const rows=(await client.query('SELECT id,quantity,reserved FROM inventory WHERE product_id=$1 AND warehouse_id=$2 AND quantity>reserved ORDER BY expiry NULLS LAST, id FOR UPDATE',[product.id,warehouseId])).rows;
     let remaining=Number(order.quantity);
-    for(const row of rows){ const available=row.quantity-row.reserved; const take=Math.min(available,remaining); if(take>0){ await client.query('UPDATE inventory SET reserved=reserved+$1 WHERE id=$2',[take,row.id]); remaining-=take; } if(!remaining) break; }
+    for(const row of rows){ const available=row.quantity-row.reserved; const take=Math.min(available,remaining); if(take>0){ await client.query('UPDATE inventory SET reserved=reserved+$1 WHERE id=$2',[take,row.id]); await client.query('INSERT INTO order_reservations(order_id,inventory_id,quantity) VALUES($1,$2,$3)',[orderId,row.id,take]); remaining-=take; } if(!remaining) break; }
     if(remaining) throw new Error('موجودی قابل رزرو کافی نیست');
     const updated=(await client.query("UPDATE orders SET status='تأییدشده' WHERE id=$1 RETURNING id,number,status",[orderId])).rows[0];
     await client.query('INSERT INTO audit_events(id,action,entity,user_name,detail) VALUES($1,$2,$3,$4,$5)',[`a${Date.now().toString(36)}`,'رزرو موجودی',order.number,user?.username||'system',`${order.quantity} واحد ${order.product}`]);
@@ -150,10 +154,10 @@ async function releaseOrder(orderId, user) {
     if(!order) throw new Error('سفارش یافت نشد');
     const product=(await client.query('SELECT id FROM products WHERE name=$1',[order.product])).rows[0];
     if(!product||!order.source_warehouse_id) throw new Error('اطلاعات محصول یا انبار سفارش ناقص است');
-    let remaining=Number(order.quantity);
-    const rows=(await client.query('SELECT id,reserved FROM inventory WHERE product_id=$1 AND warehouse_id=$2 AND reserved>0 ORDER BY id DESC FOR UPDATE',[product.id,order.source_warehouse_id])).rows;
-    for(const row of rows){ const take=Math.min(row.reserved,remaining); if(take>0){await client.query('UPDATE inventory SET reserved=reserved-$1 WHERE id=$2',[take,row.id]); remaining-=take;} if(!remaining) break; }
-    if(remaining) throw new Error('رزرو کافی برای آزادسازی وجود ندارد');
+    const rows=(await client.query('SELECT r.inventory_id AS id,r.quantity FROM order_reservations r WHERE r.order_id=$1 FOR UPDATE',[orderId])).rows;
+    if(!rows.length) throw new Error('برای این سفارش رزروی ثبت نشده است');
+    for(const row of rows){ await client.query('UPDATE inventory SET reserved=reserved-$1 WHERE id=$2 AND reserved >= $1',[row.quantity,row.id]); }
+    await client.query('DELETE FROM order_reservations WHERE order_id=$1',[orderId]);
     const updated=(await client.query("UPDATE orders SET status='ثبت‌شده' WHERE id=$1 RETURNING id,number,status",[orderId])).rows[0];
     await client.query('INSERT INTO audit_events(id,action,entity,user_name,detail) VALUES($1,$2,$3,$4,$5)',[`a${Date.now().toString(36)}`,'آزادسازی رزرو',order.number,user?.username||'system',`${order.quantity} واحد ${order.product}`]);
     await client.query('COMMIT'); return updated;
