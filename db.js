@@ -122,7 +122,44 @@ async function updateOrderStatus(id, status) {
   if (!result.rows[0]) throw new Error('سفارش یافت نشد');
   return result.rows[0];
 }
+async function reserveOrder(orderId, user) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const order=(await client.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+    if(!order) throw new Error('سفارش یافت نشد');
+    if(['تأییدشده','در حال آماده‌سازی','بارگیری‌شده','ارسال‌شده','تحویل‌شده'].includes(order.status)) throw new Error('این سفارش قبلاً تأیید یا رزرو شده است');
+    const product=(await client.query('SELECT id FROM products WHERE name=$1',[order.product])).rows[0];
+    if(!product) throw new Error('محصول سفارش یافت نشد');
+    const warehouseId=order.source_warehouse_id;
+    if(!warehouseId) throw new Error('انبار مبدأ سفارش مشخص نشده است');
+    const rows=(await client.query('SELECT id,quantity,reserved FROM inventory WHERE product_id=$1 AND warehouse_id=$2 AND quantity>reserved ORDER BY expiry NULLS LAST, id FOR UPDATE',[product.id,warehouseId])).rows;
+    let remaining=Number(order.quantity);
+    for(const row of rows){ const available=row.quantity-row.reserved; const take=Math.min(available,remaining); if(take>0){ await client.query('UPDATE inventory SET reserved=reserved+$1 WHERE id=$2',[take,row.id]); remaining-=take; } if(!remaining) break; }
+    if(remaining) throw new Error('موجودی قابل رزرو کافی نیست');
+    const updated=(await client.query("UPDATE orders SET status='تأییدشده' WHERE id=$1 RETURNING id,number,status",[orderId])).rows[0];
+    await client.query('INSERT INTO audit_events(id,action,entity,user_name,detail) VALUES($1,$2,$3,$4,$5)',[`a${Date.now().toString(36)}`,'رزرو موجودی',order.number,user?.username||'system',`${order.quantity} واحد ${order.product}`]);
+    await client.query('COMMIT'); return updated;
+  } catch(error){ await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+}
+async function releaseOrder(orderId, user) {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const order=(await client.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+    if(!order) throw new Error('سفارش یافت نشد');
+    const product=(await client.query('SELECT id FROM products WHERE name=$1',[order.product])).rows[0];
+    if(!product||!order.source_warehouse_id) throw new Error('اطلاعات محصول یا انبار سفارش ناقص است');
+    let remaining=Number(order.quantity);
+    const rows=(await client.query('SELECT id,reserved FROM inventory WHERE product_id=$1 AND warehouse_id=$2 AND reserved>0 ORDER BY id DESC FOR UPDATE',[product.id,order.source_warehouse_id])).rows;
+    for(const row of rows){ const take=Math.min(row.reserved,remaining); if(take>0){await client.query('UPDATE inventory SET reserved=reserved-$1 WHERE id=$2',[take,row.id]); remaining-=take;} if(!remaining) break; }
+    if(remaining) throw new Error('رزرو کافی برای آزادسازی وجود ندارد');
+    const updated=(await client.query("UPDATE orders SET status='ثبت‌شده' WHERE id=$1 RETURNING id,number,status",[orderId])).rows[0];
+    await client.query('INSERT INTO audit_events(id,action,entity,user_name,detail) VALUES($1,$2,$3,$4,$5)',[`a${Date.now().toString(36)}`,'آزادسازی رزرو',order.number,user?.username||'system',`${order.quantity} واحد ${order.product}`]);
+    await client.query('COMMIT'); return updated;
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+}
 async function createInvoice(orderId, x={}) { const order=(await query('SELECT * FROM orders WHERE id=$1',[orderId])).rows[0]; if(!order) throw new Error('سفارش یافت نشد'); const subtotal=Number(x.subtotal||0), discount=Number(x.discount||0), taxRate=Number(x.taxRate||0.1); if(![subtotal,discount,taxRate].every(Number.isFinite)||subtotal<0||discount<0||discount>subtotal||taxRate<0) throw new Error('مقادیر فاکتور معتبر نیستند'); const tax=Math.round((subtotal-discount)*taxRate), total=subtotal-discount+tax; const id=`inv${Date.now().toString(36)}`, number=`INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`; return (await query('INSERT INTO invoices(id,number,order_id,customer,subtotal,discount,tax,total,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt"',[id,number,orderId,order.customer,subtotal,discount,tax,total,'نهایی'])).rows[0]; }
 async function invoice(orderId) { return (await query('SELECT id,number,order_id AS "orderId",customer,subtotal::float,discount::float,tax::float,total::float,status,issued_at AS "issuedAt" FROM invoices WHERE order_id=$1 ORDER BY issued_at DESC LIMIT 1',[orderId])).rows[0]; }
 
-module.exports = { enabled, query, snapshot, canAccessWarehouse, createJournalEntry, ledger, createProduct, createMovement, createOrder, updateOrderStatus, createInvoice, invoice, createMaster };
+module.exports = { enabled, query, snapshot, canAccessWarehouse, createJournalEntry, ledger, createProduct, createMovement, createOrder, updateOrderStatus, reserveOrder, releaseOrder, createInvoice, invoice, createMaster };
